@@ -33,6 +33,10 @@ enum KeyWidth {
 enum KeyboardLayout {
     static let rows: [[KeyModel]] = [row0, row1, row2, row3, row4]
 
+    // MARK: Numeric / punctuation rows (shown when 123 is active)
+
+    static let numericRows: [[KeyModel]] = [numRow1, numRow2, numRow3, numRow4]
+
     // MARK: Row 0 — media / function bar
 
     private static let row0: [KeyModel] = [
@@ -96,6 +100,56 @@ enum KeyboardLayout {
         .init(base: "կ",  shifted: "Կ",  type: .letter,   width: .standard),
         .init(base: "լ",  shifted: "Լ",  type: .letter,    width: .standard),
         .init(base: "շ",  shifted: "Շ",  type: .letter,    width: .standard),
+    ]
+
+    // MARK: Numeric row 1 — digits
+
+    private static let numRow1: [KeyModel] = [
+        .init(base: "1",  shifted: "1",  type: .letter, width: .standard),
+        .init(base: "2",  shifted: "2",  type: .letter, width: .standard),
+        .init(base: "3",  shifted: "3",  type: .letter, width: .standard),
+        .init(base: "4",  shifted: "4",  type: .letter, width: .standard),
+        .init(base: "5",  shifted: "5",  type: .letter, width: .standard),
+        .init(base: "6",  shifted: "6",  type: .letter, width: .standard),
+        .init(base: "7",  shifted: "7",  type: .letter, width: .standard),
+        .init(base: "8",  shifted: "8",  type: .letter, width: .standard),
+        .init(base: "9",  shifted: "9",  type: .letter, width: .standard),
+        .init(base: "0",  shifted: "0",  type: .letter, width: .standard),
+    ]
+
+    // MARK: Numeric row 2 — punctuation
+
+    private static let numRow2: [KeyModel] = [
+        .init(base: "-",  shifted: "-",  type: .letter, width: .standard),
+        .init(base: "/",  shifted: "/",  type: .letter, width: .standard),
+        .init(base: ":",  shifted: ":",  type: .letter, width: .standard),
+        .init(base: ";",  shifted: ";",  type: .letter, width: .standard),
+        .init(base: "(",  shifted: "(",  type: .letter, width: .standard),
+        .init(base: ")",  shifted: ")",  type: .letter, width: .standard),
+        .init(base: "$",  shifted: "$",  type: .letter, width: .standard),
+        .init(base: "&",  shifted: "&",  type: .letter, width: .standard),
+        .init(base: "@",  shifted: "@",  type: .letter, width: .standard),
+        .init(base: "\"", shifted: "\"", type: .letter, width: .standard),
+    ]
+
+    // MARK: Numeric row 4 — Armenian punctuation
+
+    private static let numRow4: [KeyModel] = [
+        .init(base: "՜",  shifted: "՜",  type: .letter, width: .standard),
+        .init(base: "՞",  shifted: "՞",  type: .letter, width: .standard),
+        .init(base: "՝",  shifted: "՝",  type: .letter, width: .standard),
+        .init(base: "«",  shifted: "«",  type: .letter, width: .standard),
+        .init(base: "»",  shifted: "»",  type: .letter, width: .standard),
+    ]
+
+    // MARK: Numeric row 3 — symbols + backspace (flanked by wide keys in the view)
+
+    private static let numRow3: [KeyModel] = [
+        .init(base: ".",  shifted: ".",  type: .letter, width: .standard),
+        .init(base: ",",  shifted: ",",  type: .letter, width: .standard),
+        .init(base: "?",  shifted: "?",  type: .letter, width: .standard),
+        .init(base: "!",  shifted: "!",  type: .letter, width: .standard),
+        .init(base: "'",  shifted: "'",  type: .letter, width: .standard),
     ]
 
     // MARK: Row 4

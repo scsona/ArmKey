@@ -4,9 +4,12 @@ import Combine
 
 // MARK: - KeyboardViewModel
 
+enum KeyboardMode { case alphabetic, numeric }
+
 final class KeyboardViewModel: ObservableObject {
     @Published var isShifted    = false
     @Published var isCapsLocked = false
+    @Published var mode: KeyboardMode = .alphabetic
 
     var onInsert:       (String) -> Void = { _ in }
     var onDelete:       () -> Void       = {}
@@ -101,16 +104,36 @@ private struct KeyboardView: View {
 
     var body: some View {
         VStack(spacing: rowGap) {
+            if model.mode == .numeric {
+                numericBody
+            } else {
+                alphabeticBody
+            }
+        }
+        .padding(.horizontal, edgeInset)
+        .padding(.top, topInset)
+        .padding(.bottom, bottomInset)
+        .background(Color.clear)
+    }
+
+    private var alphabeticBody: some View {
+        Group {
             rowView(KeyboardLayout.rows[1])
             rowView(KeyboardLayout.rows[2])
             rowView(KeyboardLayout.rows[3])
             rowView(KeyboardLayout.rows[4])
             bottomRow
         }
-        .padding(.horizontal, edgeInset)
-        .padding(.top, topInset)
-        .padding(.bottom, bottomInset)
-        .background(Color.clear)
+    }
+
+    private var numericBody: some View {
+        Group {
+            rowView(KeyboardLayout.numericRows[0])
+            rowView(KeyboardLayout.numericRows[1])
+            rowView(KeyboardLayout.numericRows[3])
+            numericSymbolRow
+            numericBottomRow
+        }
     }
 
     // MARK: - Generic row
@@ -171,8 +194,95 @@ private struct KeyboardView: View {
 
     private var bottomRow: some View {
         HStack(spacing: keyGap) {
-            PressableKey(onPress: { _ in HapticEngine.shared.keyTap() }) {
+            PressableKey(onPress: { _ in
+                HapticEngine.shared.keyTap()
+                model.mode = .numeric
+            }) {
                 Text("123")
+                    .font(.system(size: keyFontSize, weight: .regular))
+                    .foregroundColor(tokens.glyphColor)
+                    .frame(width: specialKeyWidth, height: rowH)
+                    .background(modifierKeyBg(keyRadius))
+            }
+
+            PressableKey(
+                onPress: { _ in HapticEngine.shared.keyTap() },
+                onRelease: { model.onNextKeyboard() }
+            ) {
+                Image(systemName: "globe")
+                    .font(.system(size: keyFontSize))
+                    .foregroundColor(tokens.glyphColor)
+                    .frame(width: specialKeyWidth, height: rowH)
+                    .background(modifierKeyBg(keyRadius))
+            }
+
+            PressableKey(onPress: { _ in
+                HapticEngine.shared.spaceTap()
+                model.insertLetter(" ")
+            }) {
+                Text("space")
+                    .font(.system(size: keyFontSize, weight: .regular))
+                    .foregroundColor(tokens.glyphColor)
+                    .frame(maxWidth: .infinity, minHeight: rowH, maxHeight: rowH)
+                    .background(modifierKeyBg(keyRadius))
+            }
+
+            PressableKey(onPress: { _ in
+                HapticEngine.shared.returnTap()
+                model.insertControl("\n")
+            }) {
+                Text("return")
+                    .font(.system(size: keyFontSize, weight: .regular))
+                    .foregroundColor(tokens.glyphColor)
+                    .frame(width: 90, height: rowH)
+                    .background(modifierKeyBg(keyRadius))
+            }
+        }
+        .frame(height: rowH)
+    }
+
+    // MARK: - Numeric symbol row  ( [#+= no-op]  .  ,  ?  !  '  [⌫] )
+
+    private var numericSymbolRow: some View {
+        HStack(spacing: keyGap) {
+            PressableKey(onPress: { _ in HapticEngine.shared.keyTap() }) {
+                Text("#+= ")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(tokens.glyphColor)
+                    .frame(width: specialKeyWidth, height: rowH)
+                    .background(modifierKeyBg(keyRadius))
+            }
+
+            ForEach(KeyboardLayout.numericRows[2]) { key in
+                keyCell(key)
+            }
+
+            PressableKey(
+                repeating: true,
+                onPress: { isInitial in
+                    model.deleteBackward()
+                    if isInitial { HapticEngine.shared.deleteTap() }
+                }
+            ) {
+                Text("⌫")
+                    .font(.system(size: keyFontSize, weight: .regular))
+                    .foregroundColor(tokens.glyphColor)
+                    .frame(width: specialKeyWidth, height: rowH)
+                    .background(modifierKeyBg(keyRadius))
+            }
+        }
+        .frame(height: rowH)
+    }
+
+    // MARK: - Numeric bottom row  ( ABC  globe  space  return )
+
+    private var numericBottomRow: some View {
+        HStack(spacing: keyGap) {
+            PressableKey(onPress: { _ in
+                HapticEngine.shared.keyTap()
+                model.mode = .alphabetic
+            }) {
+                Text("ABC")
                     .font(.system(size: keyFontSize, weight: .regular))
                     .foregroundColor(tokens.glyphColor)
                     .frame(width: specialKeyWidth, height: rowH)

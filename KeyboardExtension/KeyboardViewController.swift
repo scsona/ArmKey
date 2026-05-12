@@ -52,7 +52,7 @@ private struct PressableKey<Content: View>: View {
             )
             .scaleEffect(isPressed ? 0.94 : 1.0)
             .animation(.spring(response: 0.08, dampingFraction: 0.75), value: isPressed)
-            .contentShape(Rectangle())
+            .contentShape(Rectangle().inset(by: -4))
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in

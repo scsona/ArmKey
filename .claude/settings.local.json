@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcodebuild -project ArmKey.xcodeproj -scheme ArmKey -destination 'generic/platform=iOS' build -quiet)",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/Users/sonagrigoryan/.claude/settings.json'\\)\\); print\\(json.dumps\\(d.get\\('mcpServers',{}\\), indent=2\\)\\)\")",
+      "Read(//Users/sonagrigoryan/**)",
+      "Read(//Users/sonagrigoryan/.claude/**)",
+      "WebFetch(domain:127.0.0.1)",
+      "mcp__75e7ebf8-9014-4f8c-95ee-b387c75cf3b9__get_design_context",
+      "Bash(xcodebuild -project ArmKey.xcodeproj -scheme ArmKey -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build)",
+      "Bash(gh pr create --title 'Add Armenian keyboard extension with glass key UI' --body ' *)",
+      "WebSearch"
+    ]
+  }
+}

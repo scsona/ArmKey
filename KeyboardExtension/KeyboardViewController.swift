@@ -4,7 +4,7 @@ import Combine
 
 // MARK: - KeyboardViewModel
 
-enum KeyboardMode { case alphabetic, numeric }
+enum KeyboardMode { case alphabetic, numeric, emoji }
 
 final class KeyboardViewModel: ObservableObject {
     @Published var isShifted    = false
@@ -52,7 +52,7 @@ private struct PressableKey<Content: View>: View {
             )
             .scaleEffect(isPressed ? 0.94 : 1.0)
             .animation(.spring(response: 0.08, dampingFraction: 0.75), value: isPressed)
-            .contentShape(Rectangle())
+            .contentShape(Rectangle().inset(by: -4))
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in
@@ -103,11 +103,22 @@ private struct KeyboardView: View {
     private let specialKeyWidth: CGFloat = 43
 
     var body: some View {
-        VStack(spacing: rowGap) {
-            if model.mode == .numeric {
-                numericBody
+        Group {
+            if model.mode == .emoji {
+                EmojiPickerView(
+                    tokens: tokens,
+                    onInsert: { model.insertLetter($0) },
+                    onBack: { model.mode = .alphabetic },
+                    onDelete: { model.deleteBackward() }
+                )
             } else {
-                alphabeticBody
+                VStack(spacing: rowGap) {
+                    if model.mode == .numeric {
+                        numericBody
+                    } else {
+                        alphabeticBody
+                    }
+                }
             }
         }
         .padding(.horizontal, edgeInset)
@@ -205,13 +216,12 @@ private struct KeyboardView: View {
                     .background(modifierKeyBg(keyRadius))
             }
 
-            PressableKey(
-                onPress: { _ in HapticEngine.shared.keyTap() },
-                onRelease: { model.onNextKeyboard() }
-            ) {
-                Image(systemName: "globe")
-                    .font(.system(size: keyFontSize))
-                    .foregroundColor(tokens.glyphColor)
+            PressableKey(onPress: { _ in
+                HapticEngine.shared.keyTap()
+                model.mode = .emoji
+            }) {
+                Text("😊")
+                    .font(.system(size: 20))
                     .frame(width: specialKeyWidth, height: rowH)
                     .background(modifierKeyBg(keyRadius))
             }
@@ -289,13 +299,12 @@ private struct KeyboardView: View {
                     .background(modifierKeyBg(keyRadius))
             }
 
-            PressableKey(
-                onPress: { _ in HapticEngine.shared.keyTap() },
-                onRelease: { model.onNextKeyboard() }
-            ) {
-                Image(systemName: "globe")
-                    .font(.system(size: keyFontSize))
-                    .foregroundColor(tokens.glyphColor)
+            PressableKey(onPress: { _ in
+                HapticEngine.shared.keyTap()
+                model.mode = .emoji
+            }) {
+                Text("😊")
+                    .font(.system(size: 20))
                     .frame(width: specialKeyWidth, height: rowH)
                     .background(modifierKeyBg(keyRadius))
             }
@@ -376,6 +385,135 @@ private struct KeyboardView: View {
             lastShiftTap = now
         }
         HapticEngine.shared.shiftToggle()
+    }
+}
+
+// MARK: - EmojiPickerView
+
+private struct EmojiPickerView: View {
+    let tokens: AppearanceTokens
+    let onInsert: (String) -> Void
+    let onBack: () -> Void
+    let onDelete: () -> Void
+
+    @State private var selectedCategory = 0
+
+    private let rowH: CGFloat = 42
+    private let keyRadius: CGFloat = 10
+    private let keyGap: CGFloat = 6
+    private let specialKeyWidth: CGFloat = 43
+
+    private static let categories: [(icon: String, emojis: [String])] = [
+        ("😀", ["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","😐","😑","😶","😏","😒","🙄","😬","😌","😔","😪","😴","😷","🤒","🤕","🤢","🤧","🥵","🥶","😵","🤯","🤠","🥳","😎","🤓","😕","😟","🙁","☹️","😮","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖"]),
+        ("👋", ["👋","🤚","🖐","✋","🖖","👌","✌️","🤞","🤟","🤘","👈","👉","👆","☝️","👇","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦵","🦶","👂","🦻","👃","👀","👁","👅","👄","🧠","🦷","🦴"]),
+        ("🐶", ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🕷","🦂","🐢","🐍","🦎","🐙","🦑","🦐","🦞","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊","🐅","🐆","🦓","🐘","🦛","🦏","🐪","🐫","🦒","🦘","🐃","🐂","🐄","🐎","🐖","🐏","🐑","🐐","🦌","🐕","🐩","🐈","🐓","🦃","🦚","🦜","🦢","🦩","🕊","🐇","🦝","🦨","🦡","🦦","🦥","🐁","🐀","🐿","🦔"]),
+        ("🍎", ["🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🥦","🥬","🥒","🌶","🧄","🧅","🥔","🍠","🥐","🥯","🍞","🥖","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🥪","🥙","🧆","🌮","🌯","🥗","🥘","🍲","🍛","🍜","🍝","🍣","🍙","🍚","🍱","🥟","🍦","🍧","🍨","🍩","🍪","🎂","🍰","🧁","🥧","🍫","🍬","🍭","🍮","🍯","🍼","🥛","☕","🍵","🧃","🥤","🧋","🍺","🍻","🥂","🍷","🥃","🍸","🍹","🧉","🍾"]),
+        ("⚽️", ["⚽️","🏀","🏈","⚾️","🥎","🎾","🏐","🏉","🥏","🎱","🏓","🏸","🥅","⛳️","🎣","🤿","🎽","🥊","🎿","🛷","🥌","⛸","🏆","🥇","🥈","🥉","🏅","🎖","🎪","🎭","🎨","🎬","🎤","🎧","🎼","🎹","🥁","🪘","🎷","🎺","🎸","🎻","🎲","♟","🎯","🎳","🎮","🎰","🧩"]),
+        ("✈️", ["✈️","🚀","🛸","🚁","⛵️","🚤","🚢","🚂","🚄","🚅","🚇","🚌","🚑","🚒","🚓","🚕","🚗","🚙","🛻","🚲","🛴","🛹","⛽️","🚨","🚥","🚦","🛑","🚧","⚓️","🗺","🧭","⛰","🏔","🗻","🏕","🏖","🏜","🏝","🏞","🏟","🏛","🏗","🏠","🏡","🏢","🏥","🏦","🏨","🏪","🏫","🏬","🏭","🗼","🗽","⛪️","🕌","🛕","🕍","⛩","🕋","⛲️","🏙","🌁","🌃","🌄","🌅","🌆","🌇","🌉","🌌","🌠","🎇","🎆","🌈","🌊","🌀","⚡️","❄️","🔥","💧","🌍","🌎","🌏","🌙","🌚","🌛","🌜","🌝","🌞","⭐️","🌟","💫","✨","⛅️","🌧","⛈","🌩","🌨","🌪","🌫","🌬"]),
+        ("💡", ["💡","🔦","🕯","🧱","🚪","🛋","🛏","🛁","🧴","🧷","🧹","🧺","🧻","🪣","🧼","🧽","🧯","🛒","💊","💉","🩺","🩻","🩹","🔪","⚔️","🛡","🔫","💣","💎","💍","👑","🎁","🎀","🎊","🎉","🎈","🧨","🎃","🎄","🧸","🖼","🎨","🖌","🧵","🧶","📦","📝","💼","📁","📋","📌","📍","📎","✂️","🔒","🔓","🔑","🗝","🔧","🔩","⚙️","🔗","🔮","🎲","🧩","📱","💻","⌨️","🖥","🖨","🖱","💾","💿","📀","📷","📸","📹","🎥","📽","🔭","🔬","📡","🔋","🔌","🔊","📣","📢","🔔","🔕","📻","🎶","🎵","🎼"]),
+        ("❤️", ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉","☸️","✡️","☯️","🔱","⚜️","🔰","♻️","✅","❌","⭕️","🛑","⛔️","🚫","💯","💢","♨️","❗️","❕","❓","❔","‼️","⁉️","⚠️","🚸","🟥","🟧","🟨","🟩","🟦","🟪","⬛️","⬜️","🟫","🔈","🔇","🔉","🔊","🔔","🔕","💬","💭","🗯","♠️","♣️","♥️","♦️","🃏","🎴","🀄️","🎲","🆔","🆚","🆎","🆑","🅾️","🆘","🔞","🈶","🈚️","🈸","🈺","🈷️","🈴","🈵","🈹","🈲","🅰️","🅱️"])
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            categoryTabs
+            emojiGrid
+            emojiBottomBar
+        }
+    }
+
+    private var categoryTabs: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                ForEach(Array(Self.categories.enumerated()), id: \.offset) { i, cat in
+                    Text(cat.icon)
+                        .font(.system(size: 20))
+                        .frame(width: 38, height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(selectedCategory == i ? tokens.modifierOverlay : Color.clear)
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { selectedCategory = i }
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+        .frame(height: 36)
+    }
+
+    private var emojiGrid: some View {
+        let cols = Array(repeating: GridItem(.flexible(), spacing: 0), count: 8)
+        return ScrollView(showsIndicators: false) {
+            LazyVGrid(columns: cols, spacing: 2) {
+                ForEach(Self.categories[selectedCategory].emojis, id: \.self) { emoji in
+                    Text(emoji)
+                        .font(.system(size: 28))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 42)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            HapticEngine.shared.keyTap()
+                            onInsert(emoji)
+                        }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func modifierBg(_ cornerRadius: CGFloat) -> some View {
+        KeyBlendBackground(cornerRadius: cornerRadius)
+            .shadow(color: tokens.keyShadow, radius: tokens.keyShadowRadius, x: 0, y: 1)
+    }
+
+    private var emojiBottomBar: some View {
+        HStack(spacing: keyGap) {
+            PressableKey(onPress: { _ in
+                HapticEngine.shared.keyTap()
+                onBack()
+            }) {
+                Text("ABC")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(tokens.glyphColor)
+                    .frame(width: specialKeyWidth, height: rowH)
+                    .background(modifierBg(keyRadius))
+            }
+
+            PressableKey(onPress: { _ in }) {
+                Text("😊")
+                    .font(.system(size: 20))
+                    .frame(width: specialKeyWidth, height: rowH)
+                    .background(
+                        KeyBlendBackground(cornerRadius: keyRadius)
+                            .overlay(RoundedRectangle(cornerRadius: keyRadius).fill(tokens.modifierOverlay.opacity(3)))
+                            .shadow(color: tokens.keyShadow, radius: tokens.keyShadowRadius, x: 0, y: 1)
+                    )
+            }
+
+            PressableKey(onPress: { _ in
+                HapticEngine.shared.spaceTap()
+                onInsert(" ")
+            }) {
+                Text("space")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(tokens.glyphColor)
+                    .frame(maxWidth: .infinity, minHeight: rowH, maxHeight: rowH)
+                    .background(modifierBg(keyRadius))
+            }
+
+            PressableKey(repeating: true, onPress: { isInitial in
+                onDelete()
+                if isInitial { HapticEngine.shared.deleteTap() }
+            }) {
+                Text("⌫")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(tokens.glyphColor)
+                    .frame(width: specialKeyWidth, height: rowH)
+                    .background(modifierBg(keyRadius))
+            }
+        }
+        .frame(height: rowH)
     }
 }
 

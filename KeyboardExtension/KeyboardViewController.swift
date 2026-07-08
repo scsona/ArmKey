@@ -402,10 +402,11 @@ class KeyboardViewController: UIInputViewController {
 
     override func updateViewConstraints() {
         super.updateViewConstraints()
-        // Wait until the view is in the hierarchy with real geometry —
-        // activating the constraint against a zero frame breaks the system's
-        // encapsulated-layout constraints and flashes during the transition.
-        guard view.frame.width != 0, view.frame.height != 0 else { return }
+        // Wait until the view is attached with a real width — activating the
+        // constraint against a zero frame breaks the system's encapsulated-
+        // layout constraints and flashes during the transition. Don't gate on
+        // height: with allowsSelfSizing the height stays 0 until we set it.
+        guard view.frame.width != 0 else { return }
         if heightConstraint == nil {
             let c = view.heightAnchor.constraint(equalToConstant: desiredKeyboardHeight)
             c.priority = .required - 1
@@ -420,6 +421,15 @@ class KeyboardViewController: UIInputViewController {
         // Re-request a constraints pass now that the view has its real frame,
         // so the guarded height constraint in updateViewConstraints() lands.
         view.setNeedsUpdateConstraints()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Backstop: if the width was still 0 during earlier constraint
+        // passes, request another one as soon as layout gives us geometry.
+        if heightConstraint == nil, view.frame.width != 0 {
+            view.setNeedsUpdateConstraints()
+        }
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {

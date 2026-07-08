@@ -398,37 +398,24 @@ class KeyboardViewController: UIInputViewController {
         view.isOpaque = false
         wireModel()
         embedKeyboardView()
-    }
-
-    override func updateViewConstraints() {
-        super.updateViewConstraints()
-        // Wait until the view is attached with a real width — activating the
-        // constraint against a zero frame breaks the system's encapsulated-
-        // layout constraints and flashes during the transition. Don't gate on
-        // height: with allowsSelfSizing the height stays 0 until we set it.
-        guard view.frame.width != 0 else { return }
-        if heightConstraint == nil {
-            let c = view.heightAnchor.constraint(equalToConstant: desiredKeyboardHeight)
-            c.priority = .required - 1
-            c.isActive = true
-            heightConstraint = c
-        }
+        // Install the height constraint up front — a self-height constraint
+        // doesn't need the view to be in a hierarchy, and having it in place
+        // before the system measures the keyboard means the switch-in
+        // animation targets the final height from its first frame instead of
+        // presenting at the default height and resizing afterwards.
+        let c = view.heightAnchor.constraint(equalToConstant: desiredKeyboardHeight)
+        c.priority = .required - 1
+        c.isActive = true
+        heightConstraint = c
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         HapticEngine.shared.configure(hasFullAccess: hasFullAccess)
-        // Re-request a constraints pass now that the view has its real frame,
-        // so the guarded height constraint in updateViewConstraints() lands.
-        view.setNeedsUpdateConstraints()
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        // Backstop: if the width was still 0 during earlier constraint
-        // passes, request another one as soon as layout gives us geometry.
-        if heightConstraint == nil, view.frame.width != 0 {
-            view.setNeedsUpdateConstraints()
+        // Settle layout at the final height before the presentation animation
+        // runs, so the switch-in never shows an intermediate size.
+        UIView.performWithoutAnimation {
+            view.layoutIfNeeded()
         }
     }
 

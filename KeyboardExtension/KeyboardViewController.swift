@@ -527,6 +527,11 @@ class KeyboardViewController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Without self-sizing the system pins the input view to the standard
+        // keyboard height with a required-priority constraint. Our custom
+        // height constraint then fights it on every layout pass and the
+        // keyboard flickers between the two heights when switched to.
+        inputView?.allowsSelfSizing = true
         view.backgroundColor = .clear
         view.isOpaque = false
         wireModel()
@@ -535,6 +540,10 @@ class KeyboardViewController: UIInputViewController {
 
     override func updateViewConstraints() {
         super.updateViewConstraints()
+        // Wait until the view is in the hierarchy with real geometry —
+        // activating the constraint against a zero frame breaks the system's
+        // encapsulated-layout constraints and flashes during the transition.
+        guard view.frame.width != 0, view.frame.height != 0 else { return }
         if heightConstraint == nil {
             let c = view.heightAnchor.constraint(equalToConstant: desiredKeyboardHeight)
             c.priority = .required - 1
@@ -546,6 +555,9 @@ class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         HapticEngine.shared.configure(hasFullAccess: hasFullAccess)
+        // Re-request a constraints pass now that the view has its real frame,
+        // so the guarded height constraint in updateViewConstraints() lands.
+        view.setNeedsUpdateConstraints()
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {

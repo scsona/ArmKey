@@ -27,6 +27,48 @@ final class KeyboardViewModel: ObservableObject {
     func deleteBackward() { onDelete() }
 }
 
+// MARK: - KeyMetrics
+//
+// Every key owns a gapless touch slot. The visual key face is drawn inset
+// inside a slot that reaches halfway into each neighbouring gap — and all the
+// way to the screen edge for the outermost keys — so the space between keys is
+// still live for touches. This is how the system keyboard behaves: the visual
+// gaps exist only for looks, and no point in the keyboard is unclaimed.
+//
+// Note the slots tile exactly: they neither leave dead zones (which swallow a
+// tap outright) nor overlap (which lets the wrong key win an ambiguous touch).
+
+enum KeyMetrics {
+    static let keyH:            CGFloat = 44    // visual key height (was 42)
+    static let rowGap:          CGFloat = 9     // visual gap between rows
+    static let keyGap:          CGFloat = 5     // visual gap between keys in a row (was 6)
+    static let edgeInset:       CGFloat = 4.5   // visual gap from outer keys to screen edge (was 6.5)
+    static let keyRadius:       CGFloat = 10
+    static let keyFontSize:     CGFloat = 18
+    static let specialKeyWidth: CGFloat = 43
+    static let returnKeyWidth:  CGFloat = 90
+
+    /// Height of a row's touch slots: the key face plus its share of both row gaps.
+    static let rowSlotH: CGFloat = keyH + rowGap
+    static let rowCount: Int     = 5
+    static let keyboardHeight: CGFloat = CGFloat(rowCount) * rowSlotH
+
+    /// Slot padding around a key at `index` of a row holding `count` keys.
+    /// Outer keys swallow the edge inset so their slots run to the screen edge.
+    static func insets(_ index: Int, count: Int) -> EdgeInsets {
+        EdgeInsets(top:      rowGap / 2,
+                   leading:  index == 0         ? edgeInset : keyGap / 2,
+                   bottom:   rowGap / 2,
+                   trailing: index == count - 1 ? edgeInset : keyGap / 2)
+    }
+
+    /// Width of a key face in a row of `count` equally sized keys.
+    static func keyWidth(in rowWidth: CGFloat, count: Int) -> CGFloat {
+        let n = CGFloat(count)
+        return max(0, (rowWidth - 2 * edgeInset - (n - 1) * keyGap) / n)
+    }
+}
+
 // MARK: - PressableKey
 //
 // Touch-down firing pressable wrapper. Replaces `Button` for typing speed:
@@ -35,7 +77,10 @@ final class KeyboardViewModel: ObservableObject {
 
 private struct PressableKey<Content: View>: View {
     var repeating: Bool = false
-    var cornerRadius: CGFloat = 10
+    var cornerRadius: CGFloat = KeyMetrics.keyRadius
+    /// Padding between the visual key face and the edge of its touch slot.
+    /// Applied outside the pressed-state scaling so the target never moves.
+    var hitInsets: EdgeInsets = EdgeInsets()
     let onPress: (_ isInitial: Bool) -> Void
     var onRelease: (() -> Void)? = nil
     @ViewBuilder var content: () -> Content
@@ -52,7 +97,8 @@ private struct PressableKey<Content: View>: View {
             )
             .scaleEffect(isPressed ? 0.94 : 1.0)
             .animation(.spring(response: 0.08, dampingFraction: 0.75), value: isPressed)
-            .contentShape(Rectangle().inset(by: -4))
+            .padding(hitInsets)
+            .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in
@@ -92,15 +138,11 @@ private struct KeyboardView: View {
 
     @State private var lastShiftTap: Date? = nil
 
-    private let rowH:   CGFloat = 42
-    private let rowGap: CGFloat = 9
-    private let keyGap: CGFloat = 6
-    private let keyRadius: CGFloat = 10
-    private let keyFontSize: CGFloat = 18
-    private let edgeInset: CGFloat = 6.5
-    private let bottomInset: CGFloat = 0
-    private let topInset: CGFloat = 0
-    private let specialKeyWidth: CGFloat = 43
+    private let rowH        = KeyMetrics.keyH
+    private let rowSlotH    = KeyMetrics.rowSlotH
+    private let keyRadius   = KeyMetrics.keyRadius
+    private let keyFontSize = KeyMetrics.keyFontSize
+    private let specialKeyWidth = KeyMetrics.specialKeyWidth
 
     var body: some View {
         Group {
@@ -112,7 +154,9 @@ private struct KeyboardView: View {
                     onDelete: { model.deleteBackward() }
                 )
             } else {
-                VStack(spacing: rowGap) {
+                // No spacing or padding here: the gaps live inside each key's
+                // touch slot instead, so nothing between keys is untappable.
+                VStack(spacing: 0) {
                     if model.mode == .numeric {
                         numericBody
                     } else {
@@ -121,9 +165,6 @@ private struct KeyboardView: View {
                 }
             }
         }
-        .padding(.horizontal, edgeInset)
-        .padding(.top, topInset)
-        .padding(.bottom, bottomInset)
         .background(Color.clear)
     }
 
@@ -148,28 +189,40 @@ private struct KeyboardView: View {
     }
 
     // MARK: - Generic row
+    //
+    // Key faces are sized explicitly from the row width so every key keeps the
+    // same visual width while the outer keys still get a wider touch slot that
+    // runs to the screen edge.
 
     private func rowView(_ keys: [KeyModel]) -> some View {
-        HStack(spacing: keyGap) {
-            ForEach(keys) { key in keyCell(key) }
+        GeometryReader { geo in
+            let keyW = KeyMetrics.keyWidth(in: geo.size.width, count: keys.count)
+            HStack(spacing: 0) {
+                ForEach(Array(keys.enumerated()), id: \.element.id) { idx, key in
+                    keyCell(key,
+                            width: keyW,
+                            insets: KeyMetrics.insets(idx, count: keys.count))
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .frame(height: rowH)
+        .frame(height: rowSlotH)
     }
 
     // MARK: - Key cell
 
-    private func keyCell(_ key: KeyModel, height: CGFloat? = nil) -> some View {
+    private func keyCell(_ key: KeyModel, width: CGFloat? = nil, insets: EdgeInsets) -> some View {
         let label       = (model.isShifted || model.isCapsLocked) ? key.shifted : key.base
-        let h           = height ?? rowH
         let isShiftKey  = key.type == .shift
         let shiftActive = isShiftKey && (model.isShifted || model.isCapsLocked)
         let capsActive  = isShiftKey && model.isCapsLocked
 
         return PressableKey(
             repeating: key.type == .backspace,
+            hitInsets: insets,
             onPress: { isInitial in tap(key, isInitial: isInitial) }
         ) {
-            Group {
+            keyFace(width: width) {
                 if key.type == .media {
                     Image(systemName: label)
                         .font(.system(size: 13))
@@ -180,7 +233,6 @@ private struct KeyboardView: View {
                         .foregroundColor(tokens.glyphColor)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: h, maxHeight: h)
             .background(
                 KeyBlendBackground(cornerRadius: keyRadius)
                     .overlay(
@@ -196,6 +248,18 @@ private struct KeyboardView: View {
         }
     }
 
+    /// A key face of `width` points, or one that shares the row's free space
+    /// equally with its siblings when `width` is nil.
+    @ViewBuilder
+    private func keyFace<Content: View>(width: CGFloat?,
+                                        @ViewBuilder content: () -> Content) -> some View {
+        if let width {
+            content().frame(width: width, height: rowH)
+        } else {
+            content().frame(maxWidth: .infinity, minHeight: rowH, maxHeight: rowH)
+        }
+    }
+
     // MARK: - Bottom row (123 · emoji · space · return)
 
     private func modifierKeyBg(_ cornerRadius: CGFloat) -> some View {
@@ -204,8 +268,8 @@ private struct KeyboardView: View {
     }
 
     private var bottomRow: some View {
-        HStack(spacing: keyGap) {
-            PressableKey(onPress: { _ in
+        HStack(spacing: 0) {
+            PressableKey(hitInsets: KeyMetrics.insets(0, count: 4), onPress: { _ in
                 HapticEngine.shared.keyTap()
                 model.mode = .numeric
             }) {
@@ -216,7 +280,7 @@ private struct KeyboardView: View {
                     .background(modifierKeyBg(keyRadius))
             }
 
-            PressableKey(onPress: { _ in
+            PressableKey(hitInsets: KeyMetrics.insets(1, count: 4), onPress: { _ in
                 HapticEngine.shared.keyTap()
                 model.mode = .emoji
             }) {
@@ -226,7 +290,7 @@ private struct KeyboardView: View {
                     .background(modifierKeyBg(keyRadius))
             }
 
-            PressableKey(onPress: { _ in
+            PressableKey(hitInsets: KeyMetrics.insets(2, count: 4), onPress: { _ in
                 HapticEngine.shared.spaceTap()
                 model.insertLetter(" ")
             }) {
@@ -237,25 +301,29 @@ private struct KeyboardView: View {
                     .background(modifierKeyBg(keyRadius))
             }
 
-            PressableKey(onPress: { _ in
+            PressableKey(hitInsets: KeyMetrics.insets(3, count: 4), onPress: { _ in
                 HapticEngine.shared.returnTap()
                 model.insertControl("\n")
             }) {
                 Text("return")
                     .font(.system(size: keyFontSize, weight: .regular))
                     .foregroundColor(tokens.glyphColor)
-                    .frame(width: 90, height: rowH)
+                    .frame(width: KeyMetrics.returnKeyWidth, height: rowH)
                     .background(modifierKeyBg(keyRadius))
             }
         }
-        .frame(height: rowH)
+        .frame(height: rowSlotH)
     }
 
     // MARK: - Numeric symbol row  ( [#+= no-op]  .  ,  ?  !  '  [⌫] )
 
     private var numericSymbolRow: some View {
-        HStack(spacing: keyGap) {
-            PressableKey(onPress: { _ in HapticEngine.shared.keyTap() }) {
+        let symbols = KeyboardLayout.numericRows[2]
+        let count   = symbols.count + 2          // flanking #+= and ⌫ keys
+
+        return HStack(spacing: 0) {
+            PressableKey(hitInsets: KeyMetrics.insets(0, count: count),
+                         onPress: { _ in HapticEngine.shared.keyTap() }) {
                 Text("#+= ")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundColor(tokens.glyphColor)
@@ -263,12 +331,13 @@ private struct KeyboardView: View {
                     .background(modifierKeyBg(keyRadius))
             }
 
-            ForEach(KeyboardLayout.numericRows[2]) { key in
-                keyCell(key)
+            ForEach(Array(symbols.enumerated()), id: \.element.id) { idx, key in
+                keyCell(key, insets: KeyMetrics.insets(idx + 1, count: count))
             }
 
             PressableKey(
                 repeating: true,
+                hitInsets: KeyMetrics.insets(count - 1, count: count),
                 onPress: { isInitial in
                     model.deleteBackward()
                     if isInitial { HapticEngine.shared.deleteTap() }
@@ -281,14 +350,14 @@ private struct KeyboardView: View {
                     .background(modifierKeyBg(keyRadius))
             }
         }
-        .frame(height: rowH)
+        .frame(height: rowSlotH)
     }
 
     // MARK: - Numeric bottom row  ( ABC  globe  space  return )
 
     private var numericBottomRow: some View {
-        HStack(spacing: keyGap) {
-            PressableKey(onPress: { _ in
+        HStack(spacing: 0) {
+            PressableKey(hitInsets: KeyMetrics.insets(0, count: 4), onPress: { _ in
                 HapticEngine.shared.keyTap()
                 model.mode = .alphabetic
             }) {
@@ -299,7 +368,7 @@ private struct KeyboardView: View {
                     .background(modifierKeyBg(keyRadius))
             }
 
-            PressableKey(onPress: { _ in
+            PressableKey(hitInsets: KeyMetrics.insets(1, count: 4), onPress: { _ in
                 HapticEngine.shared.keyTap()
                 model.mode = .emoji
             }) {
@@ -309,7 +378,7 @@ private struct KeyboardView: View {
                     .background(modifierKeyBg(keyRadius))
             }
 
-            PressableKey(onPress: { _ in
+            PressableKey(hitInsets: KeyMetrics.insets(2, count: 4), onPress: { _ in
                 HapticEngine.shared.spaceTap()
                 model.insertLetter(" ")
             }) {
@@ -320,18 +389,18 @@ private struct KeyboardView: View {
                     .background(modifierKeyBg(keyRadius))
             }
 
-            PressableKey(onPress: { _ in
+            PressableKey(hitInsets: KeyMetrics.insets(3, count: 4), onPress: { _ in
                 HapticEngine.shared.returnTap()
                 model.insertControl("\n")
             }) {
                 Text("return")
                     .font(.system(size: keyFontSize, weight: .regular))
                     .foregroundColor(tokens.glyphColor)
-                    .frame(width: 90, height: rowH)
+                    .frame(width: KeyMetrics.returnKeyWidth, height: rowH)
                     .background(modifierKeyBg(keyRadius))
             }
         }
-        .frame(height: rowH)
+        .frame(height: rowSlotH)
     }
 
     // MARK: - Actions
@@ -398,10 +467,10 @@ private struct EmojiPickerView: View {
 
     @State private var selectedCategory = 0
 
-    private let rowH: CGFloat = 42
-    private let keyRadius: CGFloat = 10
-    private let keyGap: CGFloat = 6
-    private let specialKeyWidth: CGFloat = 43
+    private let rowH            = KeyMetrics.keyH
+    private let rowSlotH        = KeyMetrics.rowSlotH
+    private let keyRadius       = KeyMetrics.keyRadius
+    private let specialKeyWidth = KeyMetrics.specialKeyWidth
 
     private static let categories: [(icon: String, emojis: [String])] = [
         ("😀", ["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","😐","😑","😶","😏","😒","🙄","😬","😌","😔","😪","😴","😷","🤒","🤕","🤢","🤧","🥵","🥶","😵","🤯","🤠","🥳","😎","🤓","😕","😟","🙁","☹️","😮","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖"]),
@@ -424,33 +493,39 @@ private struct EmojiPickerView: View {
 
     private var categoryTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
+            // Gapless tabs: the highlight is inset inside a full-height target.
+            HStack(spacing: 0) {
                 ForEach(Array(Self.categories.enumerated()), id: \.offset) { i, cat in
                     Text(cat.icon)
                         .font(.system(size: 20))
-                        .frame(width: 38, height: 32)
+                        .frame(width: 40, height: 34)
                         .background(
                             RoundedRectangle(cornerRadius: 6)
                                 .fill(selectedCategory == i ? tokens.modifierOverlay : Color.clear)
                         )
+                        .padding(.horizontal, 2)
+                        .frame(height: 40)
                         .contentShape(Rectangle())
                         .onTapGesture { selectedCategory = i }
                 }
             }
             .padding(.horizontal, 4)
         }
-        .frame(height: 36)
+        .frame(height: 40)
     }
 
     private var emojiGrid: some View {
         let cols = Array(repeating: GridItem(.flexible(), spacing: 0), count: 8)
+        // Cells tile with no spacing so every point in the grid hits an emoji.
+        // These stay on tap-release rather than touch-down: a touch-down gesture
+        // would fire while the user is starting to scroll the grid.
         return ScrollView(showsIndicators: false) {
-            LazyVGrid(columns: cols, spacing: 2) {
+            LazyVGrid(columns: cols, spacing: 0) {
                 ForEach(Self.categories[selectedCategory].emojis, id: \.self) { emoji in
                     Text(emoji)
                         .font(.system(size: 28))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 42)
+                        .frame(height: 46)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             HapticEngine.shared.keyTap()
@@ -468,8 +543,8 @@ private struct EmojiPickerView: View {
     }
 
     private var emojiBottomBar: some View {
-        HStack(spacing: keyGap) {
-            PressableKey(onPress: { _ in
+        HStack(spacing: 0) {
+            PressableKey(hitInsets: KeyMetrics.insets(0, count: 4), onPress: { _ in
                 HapticEngine.shared.keyTap()
                 onBack()
             }) {
@@ -480,7 +555,7 @@ private struct EmojiPickerView: View {
                     .background(modifierBg(keyRadius))
             }
 
-            PressableKey(onPress: { _ in }) {
+            PressableKey(hitInsets: KeyMetrics.insets(1, count: 4), onPress: { _ in }) {
                 Text("😊")
                     .font(.system(size: 20))
                     .frame(width: specialKeyWidth, height: rowH)
@@ -491,7 +566,7 @@ private struct EmojiPickerView: View {
                     )
             }
 
-            PressableKey(onPress: { _ in
+            PressableKey(hitInsets: KeyMetrics.insets(2, count: 4), onPress: { _ in
                 HapticEngine.shared.spaceTap()
                 onInsert(" ")
             }) {
@@ -502,7 +577,9 @@ private struct EmojiPickerView: View {
                     .background(modifierBg(keyRadius))
             }
 
-            PressableKey(repeating: true, onPress: { isInitial in
+            PressableKey(repeating: true,
+                         hitInsets: KeyMetrics.insets(3, count: 4),
+                         onPress: { isInitial in
                 onDelete()
                 if isInitial { HapticEngine.shared.deleteTap() }
             }) {
@@ -513,7 +590,7 @@ private struct EmojiPickerView: View {
                     .background(modifierBg(keyRadius))
             }
         }
-        .frame(height: rowH)
+        .frame(height: rowSlotH)
     }
 }
 
@@ -522,7 +599,7 @@ private struct EmojiPickerView: View {
 class KeyboardViewController: UIInputViewController {
     private let model = KeyboardViewModel()
 
-    private let desiredKeyboardHeight: CGFloat = 5 * 42 + 4 * 12
+    private let desiredKeyboardHeight = KeyMetrics.keyboardHeight
     private var heightConstraint: NSLayoutConstraint?
 
     override func viewDidLoad() {

@@ -39,8 +39,11 @@ final class KeyboardViewModel: ObservableObject {
 // tap outright) nor overlap (which lets the wrong key win an ambiguous touch).
 
 enum KeyMetrics {
-    static let keyH:            CGFloat = 44    // visual key height (was 42)
-    static let rowGap:          CGFloat = 9     // visual gap between rows
+    // Gaps are uniform in both axes. Shrinking a gap does not shrink the touch
+    // slot — the slot always spans face + gap — it just hands the pixels to the
+    // visible key face, so the thing you aim at matches the thing that responds.
+    static let keyH:            CGFloat = 48    // visual key height (was 42)
+    static let rowGap:          CGFloat = 5     // visual gap between rows (was 9)
     static let keyGap:          CGFloat = 5     // visual gap between keys in a row (was 6)
     static let edgeInset:       CGFloat = 4.5   // visual gap from outer keys to screen edge (was 6.5)
     static let keyRadius:       CGFloat = 10
